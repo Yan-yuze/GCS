@@ -19,7 +19,7 @@ from coverage_planner import CoveragePlanner
 
 
 # ========== 空地协同协议常量 ==========
-AIR_PORT = "/dev/ttyUSB0"
+AIR_PORT = "/dev/my_blue"
 AIR_BAUDRATE = 9600
 AIR_FRAME_HEADER = 0xAA
 AIR_FRAME_TAIL = 0xFF
@@ -355,7 +355,7 @@ def receive_monitor_data(redbull):
     total_waypoints = len(redbull)
     last_result_idx = -1
     current_coord_text = ""
-    display_line = 1
+    display_line = 0
 
     air_parser = AirProtocolFrameParser()
     print("开始监听空地协同 5 字节帧：AA idx cls cnt FF")
@@ -431,7 +431,7 @@ def main():
     global ser_air, ser2, flc
 
     # ========== 串口初始化 ==========
-    ser2 = serial.Serial("/dev/ttyUSB1", 9600)  # 串口屏
+    ser2 = serial.Serial("/dev/my_screen", 9600)  # 串口屏
     ser_air = serial.Serial(AIR_PORT, AIR_BAUDRATE, timeout=0.05)  # 单个空地通信蓝牙串口
 
     flc = build_screen_coordinate_map()
