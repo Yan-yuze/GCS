@@ -97,7 +97,7 @@ def send_to_screen(cmd_text):
     """发送文本命令到串口屏，并自动追加串口屏结束符。"""
     ser2.write(cmd_text.encode("GB2312"))
     ser2.write(bytes.fromhex("ff ff ff"))
-    ser2.flushInput()
+    ser2.flush()
 
 
 def send_number_to_screen(var_name, value):
@@ -263,6 +263,30 @@ def send_forbidden_zones(forbidden_area):
     send_to_screen('t12.txt="%s"' % forbidden_frame_text)
 
 
+def clean_screen_command(recv):
+    """把串口屏发来的原始字节整理成普通命令文本。"""
+    return recv.decode("utf-8", errors="ignore").replace("\xff", "").replace("\r", "").replace("\n", "").strip()
+
+
+def handle_repeat_forbidden_signal(forbidden_area):
+    """收到串口屏 ag 信号时，重新发送禁飞区数据。"""
+    if forbidden_area is None or ser2.in_waiting == 0:
+        return False
+
+    recv = ser2.read(ser2.in_waiting)
+    clean_command = clean_screen_command(recv)
+    if clean_command == "ag":
+        print("收到 ag 信号，重新发送禁飞区数据")
+        send_to_screen('t12.txt="开始重新发送"')
+        send_forbidden_zones(forbidden_area)
+        time.sleep(1)
+        send_to_screen('t12.txt="重新发送完成"')
+        return True
+
+    print("收到串口屏信号：%s" % recv)
+    return False
+
+
 def draw_forbidden_circles(forbidden_area):
     """在串口屏上用红色圆圈标记 3 个禁飞区。"""
     for item in forbidden_area:
@@ -279,7 +303,7 @@ def draw_forbidden_circles(forbidden_area):
     send_forbidden_zones(forbidden_area)
 
 
-def draw_path(vp):
+def draw_path(vp, forbidden_area=None):
     """在串口屏上绘制带箭头的路径线段。"""
     print("等待串口屏发送 ok，准备绘制路径")
     while True:
@@ -288,7 +312,13 @@ def draw_path(vp):
             continue
 
         recv = ser2.read(ser2.in_waiting)
-        if recv != b"ok":
+        clean_command = clean_screen_command(recv)
+        if clean_command == "ag":
+            print("收到 ag 信号，重新发送禁飞区数据")
+            send_forbidden_zones(forbidden_area)
+            continue
+
+        if clean_command != "ok":
             print("收到非 ok 信号：%s" % recv)
             continue
 
@@ -347,7 +377,7 @@ def draw_path(vp):
         break
 
 
-def receive_monitor_data(redbull):
+def receive_monitor_data(redbull, forbidden_area=None):
     """通过单个空地通信串口接收航点进度和动物识别数据。"""
     animal_totals = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
     animal_screen_ids = {"猴子": 16, "大象": 18, "孔雀": 14, "老虎": 20, "狼": 22}
@@ -355,13 +385,14 @@ def receive_monitor_data(redbull):
     total_waypoints = len(redbull)
     last_result_idx = -1
     current_coord_text = ""
-    display_line = 0
+    display_line = 1
 
     air_parser = AirProtocolFrameParser()
     print("开始监听空地协同 5 字节帧：AA idx cls cnt FF")
 
     while True:
         time.sleep(0.05)
+        handle_repeat_forbidden_signal(forbidden_area)
 
         if ser_air.in_waiting:
             data = ser_air.read(ser_air.in_waiting)
@@ -423,7 +454,6 @@ def receive_monitor_data(redbull):
                     send_to_screen('t31.txt="飞行完成!"')
                     return
 
-        ser2.flushInput()
         time.sleep(0.05)
 
 
@@ -494,14 +524,14 @@ def main():
     # ========== 读取简化路径并绘制 ==========
     vp = parse_path_file("simplified_path.txt")
     print("简化路径点：%s" % vp)
-    draw_path(vp)
+    draw_path(vp, forbidden_area)
 
     send_to_screen('t12.txt="开始接收数据"')
 
     # ========== 接收航点和动物数据 ==========
     redbull = parse_path_file("flight_path.txt")
     print("完整航点数量：%d" % len(redbull))
-    receive_monitor_data(redbull)
+    receive_monitor_data(redbull, forbidden_area)
 
 
 if __name__ == "__main__":
